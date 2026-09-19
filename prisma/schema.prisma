@@ -1,0 +1,103 @@
+// Prisma schema — mapeado 1:1 al esquema ya existente en Neon (Huebito_JS/database/schema.sql)
+// más la tabla refresh_tokens (nueva) que necesita esta API para poder rotar/revocar sesiones.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Categoria {
+  id      Int      @id @default(autoincrement())
+  nombre  String
+  slug    String   @unique
+  recetas Receta[]
+
+  @@map("categorias")
+}
+
+model Receta {
+  id             Int      @id @default(autoincrement())
+  categoriaId    Int      @map("categoria_id")
+  nombre         String
+  descripcion    String?
+  ingredientes   Json     @default("[]")
+  preparacion    Json     @default("[]")
+  tiempoMinutos  Int?     @map("tiempo_minutos")
+  dificultad     String?
+  imagenAsset    String?  @map("imagen_asset")
+  bebida         String?
+  acompanamiento String?
+  videoUrl       String?  @map("video_url")
+
+  categoria  Categoria   @relation(fields: [categoriaId], references: [id])
+  favoritos  Favorito[]
+  historial  Historial[]
+
+  @@index([categoriaId])
+  @@map("recetas")
+}
+
+model Usuario {
+  id             Int      @id @default(autoincrement())
+  nombre         String
+  email          String   @unique
+  fotoUrl        String?  @map("foto_url")
+  googleId       String?  @unique @map("google_id")
+  fechaRegistro  DateTime @default(now()) @map("fecha_registro") @db.Timestamptz
+
+  favoritos     Favorito[]
+  historial     Historial[]
+  refreshTokens RefreshToken[]
+
+  @@map("usuarios")
+}
+
+model Favorito {
+  id             Int      @id @default(autoincrement())
+  usuarioId      Int      @map("usuario_id")
+  recetaId       Int      @map("receta_id")
+  fechaGuardado  DateTime @default(now()) @map("fecha_guardado") @db.Timestamptz
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  receta  Receta  @relation(fields: [recetaId], references: [id], onDelete: Cascade)
+
+  @@unique([usuarioId, recetaId])
+  @@map("favoritos")
+}
+
+model Historial {
+  id        Int      @id @default(autoincrement())
+  usuarioId Int      @map("usuario_id")
+  recetaId  Int      @map("receta_id")
+  fecha     DateTime @default(now()) @db.Timestamptz
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  receta  Receta  @relation(fields: [recetaId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+  @@map("historial")
+}
+
+/// Tabla nueva (no está en el schema.sql original de Huebito_JS).
+/// Guarda solo el HASH del refresh token, nunca el token en claro, para
+/// poder revocar/rotar sesiones sin exponer nada útil si la BD se filtra.
+model RefreshToken {
+  id                  String    @id @default(uuid())
+  usuarioId           Int       @map("usuario_id")
+  tokenHash           String    @unique @map("token_hash")
+  expiresAt           DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt           DateTime? @map("revoked_at") @db.Timestamptz
+  replacedByTokenHash String?   @map("replaced_by_token_hash")
+  userAgent           String?   @map("user_agent")
+  ip                  String?
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+  @@map("refresh_tokens")
+}
