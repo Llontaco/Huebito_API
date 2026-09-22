@@ -3,6 +3,11 @@
 
 generator client {
   provider = "prisma-client-js"
+  // "native" es el motor para la maquina de desarrollo (Windows). El segundo es
+  // el que necesita la funcion serverless de Vercel, que corre sobre Amazon
+  // Linux 2023 con OpenSSL 3; sin el, Prisma arranca en local y falla en
+  // produccion con "Query engine library for current platform not found".
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {

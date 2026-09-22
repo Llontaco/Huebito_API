@@ -1,54 +1,20 @@
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
-import helmet from 'helmet';
-import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+import { configurarApp } from './setup-app';
 
+// Arranque como servidor de siempre: escucha un puerto y se queda vivo.
+// En Vercel no se usa este archivo, sino api/index.ts (función serverless);
+// los dos comparten configurarApp() para no divergir.
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
-    // Si vas detrás de un proxy/CDN (Render, Railway, Fly, nginx, etc.),
-    // esto hace que req.ip y el header X-Forwarded-Proto se lean bien —
-    // importante para el rate limiter y para que las cookies "secure" y
-    // los redirects funcionen correctamente.
     logger: ['error', 'warn', 'log'],
   });
-  app.getHttpAdapter().getInstance().set('trust proxy', 1);
 
-  const config = app.get(ConfigService);
+  configurarApp(app);
 
-  app.use(
-    helmet({
-      // Por defecto helmet manda Cross-Origin-Resource-Policy: same-origin,
-      // y eso impide que el navegador renderice las imágenes de las recetas
-      // cuando el front corre en otro puerto/dominio que la API. El endpoint
-      // GET /recetas/:id/imagen es público y de solo lectura, así que se
-      // permite embeberlo desde otros orígenes.
-      crossOriginResourcePolicy: { policy: 'cross-origin' },
-    }),
-  );
-  app.use(cookieParser());
-
-  const corsOrigins = (config.get<string>('CORS_ORIGINS') ?? '')
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
-
-  app.enableCors({
-    origin: corsOrigins,
-    credentials: true, // necesario para que viaje la cookie de refresh token
-  });
-
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true, // descarta cualquier campo no declarado en el DTO
-      forbidNonWhitelisted: true, // y rechaza la petición si vino uno
-      transform: true,
-      transformOptions: { enableImplicitConversion: true },
-    }),
-  );
-
-  const port = config.get<number>('PORT') ?? 3000;
+  const port = app.get(ConfigService).get<number>('PORT') ?? 3000;
   await app.listen(port);
   Logger.log(`API escuchando en http://localhost:${port}`, 'Bootstrap');
 }
