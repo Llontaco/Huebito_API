@@ -33,6 +33,19 @@ model Receta {
   acompanamiento String?
   videoUrl       String?  @map("video_url")
 
+  /// Imagen de referencia guardada en la propia base (no en disco ni en un CDN).
+  /// Se sirve por GET /recetas/:id/imagen. Es nullable porque no toda receta
+  /// consigue una foto con licencia reutilizable.
+  imagenDatos    Bytes?   @map("imagen_datos")
+  imagenMime     String?  @map("imagen_mime")
+  imagenAncho    Int?     @map("imagen_ancho")
+  imagenAlto     Int?     @map("imagen_alto")
+  imagenBytes    Int?     @map("imagen_bytes")
+  imagenFuente   String?  @map("imagen_fuente")
+  imagenAutor    String?  @map("imagen_autor")
+  imagenLicencia String?  @map("imagen_licencia")
+  imagenQuery    String?  @map("imagen_query")
+
   categoria  Categoria   @relation(fields: [categoriaId], references: [id])
   favoritos  Favorito[]
   historial  Historial[]

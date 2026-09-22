@@ -17,7 +17,16 @@ async function bootstrap() {
 
   const config = app.get(ConfigService);
 
-  app.use(helmet());
+  app.use(
+    helmet({
+      // Por defecto helmet manda Cross-Origin-Resource-Policy: same-origin,
+      // y eso impide que el navegador renderice las imágenes de las recetas
+      // cuando el front corre en otro puerto/dominio que la API. El endpoint
+      // GET /recetas/:id/imagen es público y de solo lectura, así que se
+      // permite embeberlo desde otros orígenes.
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
   app.use(cookieParser());
 
   const corsOrigins = (config.get<string>('CORS_ORIGINS') ?? '')
