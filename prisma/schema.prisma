@@ -50,6 +50,7 @@ model Receta {
   imagenAutor    String?  @map("imagen_autor")
   imagenLicencia String?  @map("imagen_licencia")
   imagenQuery    String?  @map("imagen_query")
+  imagenTitulo   String?  @map("imagen_titulo")
 
   categoria  Categoria   @relation(fields: [categoriaId], references: [id])
   favoritos  Favorito[]
