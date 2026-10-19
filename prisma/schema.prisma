@@ -124,6 +124,81 @@ view RecetaBebida {
   @@map("recetas_bebidas")
 }
 
+// Vistas de la migración 20261019010000_add_vistas_cena_y_bebidas_por_momento:
+// las cenas, y las bebidas separadas por el momento del día en que salen como
+// acompañante. Una bebida de varios momentos aparece en varias de estas vistas.
+
+view RecetaCena {
+  id             Int     @unique
+  categoriaId    Int     @map("categoria_id")
+  nombre         String
+  descripcion    String?
+  ingredientes   Json
+  preparacion    Json
+  tiempoMinutos  Int?    @map("tiempo_minutos")
+  dificultad     String?
+  imagenAsset    String? @map("imagen_asset")
+  bebida         String?
+  acompanamiento String?
+  videoUrl       String? @map("video_url")
+
+  @@map("recetas_cena")
+}
+
+view RecetaBebidaDesayuno {
+  id             Int     @unique
+  categoriaId    Int     @map("categoria_id")
+  nombre         String
+  descripcion    String?
+  ingredientes   Json
+  preparacion    Json
+  tiempoMinutos  Int?    @map("tiempo_minutos")
+  dificultad     String?
+  imagenAsset    String? @map("imagen_asset")
+  bebida         String?
+  acompanamiento String?
+  videoUrl       String? @map("video_url")
+  momentos       String[]
+
+  @@map("recetas_bebidas_desayuno")
+}
+
+view RecetaBebidaAlmuerzo {
+  id             Int     @unique
+  categoriaId    Int     @map("categoria_id")
+  nombre         String
+  descripcion    String?
+  ingredientes   Json
+  preparacion    Json
+  tiempoMinutos  Int?    @map("tiempo_minutos")
+  dificultad     String?
+  imagenAsset    String? @map("imagen_asset")
+  bebida         String?
+  acompanamiento String?
+  videoUrl       String? @map("video_url")
+  momentos       String[]
+
+  @@map("recetas_bebidas_almuerzo")
+}
+
+view RecetaBebidaCena {
+  id             Int     @unique
+  categoriaId    Int     @map("categoria_id")
+  nombre         String
+  descripcion    String?
+  ingredientes   Json
+  preparacion    Json
+  tiempoMinutos  Int?    @map("tiempo_minutos")
+  dificultad     String?
+  imagenAsset    String? @map("imagen_asset")
+  bebida         String?
+  acompanamiento String?
+  videoUrl       String? @map("video_url")
+  momentos       String[]
+
+  @@map("recetas_bebidas_cena")
+}
+
 model Usuario {
   id             Int      @id @default(autoincrement())
   nombre         String
