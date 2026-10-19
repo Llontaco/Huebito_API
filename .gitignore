@@ -13,3 +13,6 @@ npm-debug.log*
 .idea/
 
 .vercel
+
+# Respaldos locales de datos borrados (incluyen imágenes en base64)
+backups/
