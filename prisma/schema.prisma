@@ -8,6 +8,8 @@ generator client {
   // Linux 2023 con OpenSSL 3; sin el, Prisma arranca en local y falla en
   // produccion con "Query engine library for current platform not found".
   binaryTargets = ["native", "rhel-openssl-3.0.x"]
+  // Necesario para declarar las vistas recetas_* de más abajo.
+  previewFeatures = ["views"]
 }
 
 datasource db {
@@ -38,6 +40,10 @@ model Receta {
   acompanamiento String?
   videoUrl       String?  @map("video_url")
 
+  /// Momentos del día en que encaja: "desayuno", "almuerzo", "cena". Hoy solo
+  /// lo usan las bebidas, para la ruleta de acompañante.
+  momentos       String[] @default([])
+
   /// Imagen de referencia guardada en la propia base (no en disco ni en un CDN).
   /// Se sirve por GET /recetas/:id/imagen. Es nullable porque no toda receta
   /// consigue una foto con licencia reutilizable.
@@ -57,7 +63,65 @@ model Receta {
   historial  Historial[]
 
   @@index([categoriaId])
+  @@index([momentos], type: Gin)
   @@map("recetas")
+}
+
+// Vistas de "recetas" filtradas por categoría (migración
+// 20261018210000_add_vistas_recetas_por_categoria). Solo sirven para revisar
+// y editar con más orden, p. ej. en Prisma Studio: un cambio aquí se guarda en
+// la fila real de "recetas". Prisma no crea vistas en las migraciones, así que
+// si cambia una columna de Receta hay que actualizar el SQL a mano.
+
+view RecetaDesayuno {
+  id             Int     @unique
+  categoriaId    Int     @map("categoria_id")
+  nombre         String
+  descripcion    String?
+  ingredientes   Json
+  preparacion    Json
+  tiempoMinutos  Int?    @map("tiempo_minutos")
+  dificultad     String?
+  imagenAsset    String? @map("imagen_asset")
+  bebida         String?
+  acompanamiento String?
+  videoUrl       String? @map("video_url")
+
+  @@map("recetas_desayuno")
+}
+
+view RecetaAlmuerzo {
+  id             Int     @unique
+  categoriaId    Int     @map("categoria_id")
+  nombre         String
+  descripcion    String?
+  ingredientes   Json
+  preparacion    Json
+  tiempoMinutos  Int?    @map("tiempo_minutos")
+  dificultad     String?
+  imagenAsset    String? @map("imagen_asset")
+  bebida         String?
+  acompanamiento String?
+  videoUrl       String? @map("video_url")
+
+  @@map("recetas_almuerzo")
+}
+
+view RecetaBebida {
+  id             Int     @unique
+  categoriaId    Int     @map("categoria_id")
+  nombre         String
+  descripcion    String?
+  ingredientes   Json
+  preparacion    Json
+  tiempoMinutos  Int?    @map("tiempo_minutos")
+  dificultad     String?
+  imagenAsset    String? @map("imagen_asset")
+  bebida         String?
+  acompanamiento String?
+  videoUrl       String? @map("video_url")
+
+  @@map("recetas_bebidas")
 }
 
 model Usuario {

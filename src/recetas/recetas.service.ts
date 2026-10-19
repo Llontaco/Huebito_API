@@ -19,6 +19,7 @@ export class RecetasService {
 
     const where: Prisma.RecetaWhereInput = {
       ...(query.categoriaId ? { categoriaId: query.categoriaId } : {}),
+      ...(query.momento ? { momentos: { has: query.momento } } : {}),
       ...(query.q
         ? { nombre: { contains: query.q, mode: 'insensitive' as const } }
         : {}),
