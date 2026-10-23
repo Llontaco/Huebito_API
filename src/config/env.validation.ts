@@ -22,4 +22,5 @@ export const envValidationSchema = Joi.object({
   GOOGLE_CLIENT_ID: Joi.string().required(),
 
   COOKIE_DOMAIN: Joi.string().optional().allow(''),
+  COOKIE_PATH: Joi.string().optional().allow(''),
 });

@@ -30,6 +30,13 @@ export class AuthController {
     private readonly config: ConfigService,
   ) {}
 
+  // Ruta que ve el navegador. Si el front llama a la API a través de un
+  // proxy en su propio dominio (rewrite /api/* de Vercel), la ruta pública es
+  // /api/auth y la cookie tiene que declararse con esa ruta para que viaje.
+  private cookiePath(): string {
+    return this.config.get<string>('COOKIE_PATH') || '/auth';
+  }
+
   private cookieOptions(): CookieOptions {
     const isProd = this.config.get('NODE_ENV') === 'production';
     const days = Number(this.config.get('JWT_REFRESH_EXPIRES_IN_DAYS')) || 30;
@@ -37,7 +44,7 @@ export class AuthController {
       httpOnly: true,
       secure: isProd, // en dev local por http permitimos secure:false
       sameSite: isProd ? 'none' : 'lax', // frontend y API viven en dominios distintos
-      path: '/auth',
+      path: this.cookiePath(),
       domain: this.config.get('COOKIE_DOMAIN') || undefined,
       maxAge: days * 24 * 60 * 60 * 1000,
     };
@@ -122,7 +129,7 @@ export class AuthController {
     if (token) {
       await this.authService.logout(token);
     }
-    res.clearCookie(REFRESH_COOKIE_NAME, { path: '/auth' });
+    res.clearCookie(REFRESH_COOKIE_NAME, { path: this.cookiePath() });
   }
 
   @Post('logout-all')
@@ -133,6 +140,6 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     await this.authService.revokeAllForUser(user.id);
-    res.clearCookie(REFRESH_COOKIE_NAME, { path: '/auth' });
+    res.clearCookie(REFRESH_COOKIE_NAME, { path: this.cookiePath() });
   }
 }
