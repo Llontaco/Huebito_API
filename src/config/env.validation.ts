@@ -15,7 +15,18 @@ export const envValidationSchema = Joi.object({
 
   CORS_ORIGINS: Joi.string().required(),
 
-  JWT_ACCESS_SECRET: Joi.string().min(32).required(),
+  // Con este secreto se firman los tokens de sesión: quien lo conozca puede
+  // hacerse pasar por cualquier usuario. Se rechazan los valores de ejemplo de
+  // .env.example y cualquier texto que diga "cambia"/"reemplaza", para que la
+  // API no arranque nunca con un secreto público.
+  JWT_ACCESS_SECRET: Joi.string()
+    .min(32)
+    .required()
+    .pattern(/cambia|reemplaza|change-?me|secret-?here/i, { invert: true })
+    .messages({
+      'string.pattern.invert.base':
+        'JWT_ACCESS_SECRET es un valor de ejemplo: genera uno con  node -e "console.log(require(\x27crypto\x27).randomBytes(48).toString(\x27base64url\x27))"',
+    }),
   JWT_ACCESS_EXPIRES_IN: Joi.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN_DAYS: Joi.number().default(30),
 

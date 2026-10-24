@@ -11,6 +11,10 @@ export interface RequestMeta {
   ip?: string;
 }
 
+// Ventana en la que un refresh token recién rotado se considera "carrera" del
+// mismo cliente y no un reuso malicioso.
+export const GRACIA_ROTACION_MS = 30_000;
+
 export interface TokenPair {
   accessToken: string;
   refreshToken: string;
@@ -168,23 +172,51 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token inválido');
     }
 
-    if (record.revokedAt || record.expiresAt < new Date()) {
-      if (record.revokedAt) {
-        this.logger.warn(
-          `Posible reuso de refresh token revocado (usuario ${record.usuarioId}) — revocando todas sus sesiones`,
-        );
-        await this.revokeAllForUser(record.usuarioId);
-      }
+    if (record.revokedAt) {
+      await this.manejarTokenYaUsado(record);
+    }
+    if (record.expiresAt < new Date()) {
       throw new UnauthorizedException('Refresh token inválido o expirado');
     }
 
-    // Marca este token como usado/revocado antes de emitir el nuevo (rotación).
-    await this.prisma.refreshToken.update({
-      where: { id: record.id },
+    // Marca este token como usado antes de emitir el nuevo (rotación). Es un
+    // updateMany condicionado a revokedAt = null para que sea atómico: si dos
+    // peticiones llegan a la vez con el mismo token, solo una lo "gana".
+    const { count } = await this.prisma.refreshToken.updateMany({
+      where: { id: record.id, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    if (count === 0) {
+      throw new UnauthorizedException('Refresh token ya utilizado');
+    }
 
     return this.issueTokenPair(record.usuario, meta, record.id);
+  }
+
+  /**
+   * Un token ya revocado puede volver por dos motivos:
+   *  - carrera legítima: el mismo cliente pidió dos refresh casi a la vez
+   *    (dos pestañas, o React en modo estricto). El token se rotó hace un
+   *    instante; se rechaza la petición sin castigar al usuario.
+   *  - reuso real: alguien guardó un token viejo y lo reintenta. Señal de
+   *    robo: se revocan todas las sesiones del usuario.
+   */
+  private async manejarTokenYaUsado(record: {
+    usuarioId: number;
+    revokedAt: Date | null;
+    replacedByTokenHash: string | null;
+  }): Promise<never> {
+    const msDesdeRotacion = Date.now() - (record.revokedAt?.getTime() ?? 0);
+    const esCarrera =
+      !!record.replacedByTokenHash && msDesdeRotacion < GRACIA_ROTACION_MS;
+
+    if (!esCarrera) {
+      this.logger.warn(
+        `Posible reuso de refresh token revocado (usuario ${record.usuarioId}) — revocando todas sus sesiones`,
+      );
+      await this.revokeAllForUser(record.usuarioId);
+    }
+    throw new UnauthorizedException('Refresh token inválido o expirado');
   }
 
   async logout(plainToken: string): Promise<void> {
