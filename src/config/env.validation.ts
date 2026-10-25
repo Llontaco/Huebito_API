@@ -33,5 +33,9 @@ export const envValidationSchema = Joi.object({
   GOOGLE_CLIENT_ID: Joi.string().required(),
 
   COOKIE_DOMAIN: Joi.string().optional().allow(''),
+
+  // Clave de la API de Claude para el asistente. Opcional: sin ella la API
+  // funciona y solo POST /chat responde 503.
+  ANTHROPIC_API_KEY: Joi.string().optional().allow(''),
   COOKIE_PATH: Joi.string().optional().allow(''),
 });

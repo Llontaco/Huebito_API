@@ -16,6 +16,7 @@ export const ENV_PRUEBA = {
   GOOGLE_CLIENT_ID: 'cliente-de-prueba.apps.googleusercontent.com',
   COOKIE_PATH: '/auth',
   COOKIE_DOMAIN: '',
+  ANTHROPIC_API_KEY: '',
 };
 Object.assign(process.env, ENV_PRUEBA);
 

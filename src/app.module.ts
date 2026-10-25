@@ -13,6 +13,7 @@ import { CategoriasModule } from './categorias/categorias.module';
 import { RecetasModule } from './recetas/recetas.module';
 import { FavoritosModule } from './favoritos/favoritos.module';
 import { HistorialModule } from './historial/historial.module';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { HistorialModule } from './historial/historial.module';
     RecetasModule,
     FavoritosModule,
     HistorialModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [

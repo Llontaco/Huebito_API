@@ -6,13 +6,16 @@ import {
   Query,
   Res,
   StreamableFile,
+  UseInterceptors,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { RecetasService } from './recetas.service';
 import { FindRecetasDto } from './dto/find-recetas.dto';
+import { CachePublicoInterceptor } from '../common/interceptors/cache-publico.interceptor';
 
 // Endpoints públicos de solo lectura.
 @Controller('recetas')
+@UseInterceptors(CachePublicoInterceptor)
 export class RecetasController {
   constructor(private readonly recetasService: RecetasService) {}
 
