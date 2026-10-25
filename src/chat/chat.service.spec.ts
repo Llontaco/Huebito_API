@@ -21,6 +21,19 @@ const respuesta = (text: string, finishReason = FinishReason.STOP) => ({ text, c
 const pregunta = [{ rol: 'user' as const, texto: '¿Cómo giro la ruleta?' }];
 
 describe('ChatService (Gemini)', () => {
+  // Prisma carga el .env al importarse y process.env manda sobre el
+  // ConfigService de prueba: se aíslan las variables de Gemini para que las
+  // pruebas nunca usen la clave real ni llamen a Google.
+  const guardadas = { key: process.env.GEMINI_API_KEY, model: process.env.GEMINI_MODEL };
+  beforeEach(() => {
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.GEMINI_MODEL;
+  });
+  afterAll(() => {
+    if (guardadas.key !== undefined) process.env.GEMINI_API_KEY = guardadas.key;
+    if (guardadas.model !== undefined) process.env.GEMINI_MODEL = guardadas.model;
+  });
+
   it('sin GEMINI_API_KEY responde 503 sin romper el resto de la API', async () => {
     const { service } = crear({});
     await expect(service.responder(pregunta)).rejects.toThrow(ServiceUnavailableException);
