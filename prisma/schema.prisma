@@ -107,6 +107,40 @@ view RecetaAlmuerzo {
   @@map("recetas_almuerzo")
 }
 
+view RecetaSopa {
+  id             Int     @unique
+  categoriaId    Int     @map("categoria_id")
+  nombre         String
+  descripcion    String?
+  ingredientes   Json
+  preparacion    Json
+  tiempoMinutos  Int?    @map("tiempo_minutos")
+  dificultad     String?
+  imagenAsset    String? @map("imagen_asset")
+  bebida         String?
+  acompanamiento String?
+  videoUrl       String? @map("video_url")
+
+  @@map("recetas_sopa")
+}
+
+view RecetaEntrada {
+  id             Int     @unique
+  categoriaId    Int     @map("categoria_id")
+  nombre         String
+  descripcion    String?
+  ingredientes   Json
+  preparacion    Json
+  tiempoMinutos  Int?    @map("tiempo_minutos")
+  dificultad     String?
+  imagenAsset    String? @map("imagen_asset")
+  bebida         String?
+  acompanamiento String?
+  videoUrl       String? @map("video_url")
+
+  @@map("recetas_entrada")
+}
+
 view RecetaBebida {
   id             Int     @unique
   categoriaId    Int     @map("categoria_id")
