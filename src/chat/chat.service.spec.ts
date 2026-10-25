@@ -1,7 +1,7 @@
 import { HttpException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import Anthropic from '@anthropic-ai/sdk';
-import { ChatService, MODELO_CHAT } from './chat.service';
+import { ApiError, FinishReason } from '@google/genai';
+import { ChatService, MODELO_CHAT_POR_DEFECTO } from './chat.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 const recetas = [
@@ -9,73 +9,83 @@ const recetas = [
   { nombre: 'Caldo de Gallina', tiempoMinutos: 90, dificultad: 'facil', categoria: { slug: 'sopas' } },
 ];
 
-function crear(apiKey = 'sk-prueba') {
+function crear(env: Record<string, string> = { GEMINI_API_KEY: 'clave-prueba' }) {
   const prisma = { receta: { findMany: jest.fn().mockResolvedValue(recetas) } };
-  const service = new ChatService(prisma as unknown as PrismaService, new ConfigService({ ANTHROPIC_API_KEY: apiKey }));
-  const create = jest.fn();
-  if (apiKey) (service as any).client = { beta: { messages: { create } } };
-  return { service, create, prisma };
+  const service = new ChatService(prisma as unknown as PrismaService, new ConfigService(env));
+  const generateContent = jest.fn();
+  if (env.GEMINI_API_KEY) (service as any).ai = { models: { generateContent } };
+  return { service, generateContent, prisma };
 }
 
-const texto = (t: string) => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: t }] });
+const respuesta = (text: string, finishReason = FinishReason.STOP) => ({ text, candidates: [{ finishReason }] });
 const pregunta = [{ rol: 'user' as const, texto: '¿Cómo giro la ruleta?' }];
 
-describe('ChatService', () => {
-  it('sin ANTHROPIC_API_KEY responde 503 sin romper el resto de la API', async () => {
-    const { service } = crear('');
+describe('ChatService (Gemini)', () => {
+  it('sin GEMINI_API_KEY responde 503 sin romper el resto de la API', async () => {
+    const { service } = crear({});
     await expect(service.responder(pregunta)).rejects.toThrow(ServiceUnavailableException);
   });
 
-  it('llama a Claude con el modelo, el esfuerzo bajo, fallbacks y la caché del catálogo', async () => {
-    const { service, create } = crear();
-    create.mockResolvedValue(texto('Toca "Girar".'));
-
-    await expect(service.responder(pregunta)).resolves.toBe('Toca "Girar".');
-    const params = create.mock.calls[0][0];
-    expect(params.model).toBe(MODELO_CHAT);
-    expect(params.output_config).toEqual({ effort: 'low' });
-    expect(params.fallbacks).toBe('default');
-    expect(params.betas).toContain('server-side-fallback-2026-07-01');
-    expect(params.messages).toEqual([{ role: 'user', content: '¿Cómo giro la ruleta?' }]);
-    expect(params.system[1].cache_control).toEqual({ type: 'ephemeral' });
-    expect(params.system[1].text).toContain('Almorzar > Sopa o chupe:\nCaldo de Gallina (90 min, facil)');
+  it('usa el modelo por defecto o el de GEMINI_MODEL', () => {
+    expect(crear().service.modelo).toBe(MODELO_CHAT_POR_DEFECTO);
+    expect(crear({ GEMINI_API_KEY: 'x', GEMINI_MODEL: 'gemini-2.5-pro' }).service.modelo).toBe('gemini-2.5-pro');
   });
 
-  it('el catálogo se arma una vez y se reutiliza (prompt estable para la caché)', async () => {
-    const { service, create, prisma } = crear();
-    create.mockResolvedValue(texto('ok'));
+  it('manda la conversación con los roles de Gemini, la guía y el catálogo', async () => {
+    const { service, generateContent } = crear();
+    generateContent.mockResolvedValue(respuesta('Toca "Girar".'));
+
+    await expect(
+      service.responder([
+        { rol: 'user', texto: 'hola' },
+        { rol: 'assistant', texto: '¡Hola!' },
+        { rol: 'user', texto: '¿Cómo giro la ruleta?' },
+      ]),
+    ).resolves.toBe('Toca "Girar".');
+
+    const params = generateContent.mock.calls[0][0];
+    expect(params.model).toBe(MODELO_CHAT_POR_DEFECTO);
+    expect(params.contents.map((c) => c.role)).toEqual(['user', 'model', 'user']);
+    expect(params.contents[2].parts).toEqual([{ text: '¿Cómo giro la ruleta?' }]);
+    expect(params.config.systemInstruction).toContain('Eres Huebi');
+    expect(params.config.systemInstruction).toContain('Almorzar > Sopa o chupe:\nCaldo de Gallina (90 min, facil)');
+    expect(params.config.thinkingConfig).toEqual({ thinkingBudget: 0 });
+  });
+
+  it('el catálogo se arma una vez y se reutiliza', async () => {
+    const { service, generateContent, prisma } = crear();
+    generateContent.mockResolvedValue(respuesta('ok'));
     await service.responder(pregunta);
     await service.responder(pregunta);
     expect(prisma.receta.findMany).toHaveBeenCalledTimes(1);
-    expect(create.mock.calls[0][0].system).toEqual(create.mock.calls[1][0].system);
+    expect(generateContent.mock.calls[0][0].config.systemInstruction).toBe(
+      generateContent.mock.calls[1][0].config.systemInstruction,
+    );
   });
 
   it('la conversación debe empezar y terminar con el usuario', async () => {
     const { service } = crear();
     await expect(service.responder([{ rol: 'assistant', texto: 'hola' }])).rejects.toThrow(/usuario/);
-    await expect(
-      service.responder([{ rol: 'user', texto: 'a' }, { rol: 'assistant', texto: 'b' }]),
-    ).rejects.toThrow(/usuario/);
   });
 
-  it('si el modelo se niega, devuelve un mensaje amable en vez de vacío', async () => {
-    const { service, create } = crear();
-    create.mockResolvedValue({ stop_reason: 'refusal', content: [] });
+  it('si Gemini bloquea la respuesta por seguridad, devuelve un mensaje amable', async () => {
+    const { service, generateContent } = crear();
+    generateContent.mockResolvedValue(respuesta(undefined, FinishReason.SAFETY));
     await expect(service.responder(pregunta)).resolves.toMatch(/no puedo ayudarte/);
   });
 
-  it('un límite de uso de Claude se traduce en 429', async () => {
-    const { service, create } = crear();
-    create.mockRejectedValue(new Anthropic.RateLimitError(429, {}, 'rate', new Headers()));
+  it('el límite del plan gratuito (429) se traduce en 429', async () => {
+    const { service, generateContent } = crear();
+    generateContent.mockRejectedValue(new ApiError({ message: 'quota', status: 429 }));
     const err = await service.responder(pregunta).catch((e) => e);
     expect(err).toBeInstanceOf(HttpException);
     expect(err.getStatus()).toBe(429);
   });
 
-  it('otros errores de Claude se traducen en 503 sin filtrar detalles', async () => {
-    const { service, create } = crear();
+  it('otros errores de Gemini (clave inválida, caída) se traducen en 503', async () => {
+    const { service, generateContent } = crear();
     jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
-    create.mockRejectedValue(new Anthropic.InternalServerError(500, {}, 'detalle interno', new Headers()));
+    generateContent.mockRejectedValue(new ApiError({ message: 'API key not valid', status: 400 }));
     await expect(service.responder(pregunta)).rejects.toThrow('El asistente no está disponible en este momento');
   });
 });

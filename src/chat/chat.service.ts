@@ -7,12 +7,14 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import Anthropic from '@anthropic-ai/sdk';
+import { ApiError, FinishReason, GoogleGenAI } from '@google/genai';
 import { PrismaService } from '../prisma/prisma.service';
 import { GUIA_HUEBITO } from './guia-huebito';
 import type { MensajeChatDto } from './dto/chat.dto';
 
-export const MODELO_CHAT = 'claude-opus-5-5';
+// Modelo de Gemini por defecto: rápido y dentro del plan gratuito. Se puede
+// cambiar con la variable GEMINI_MODEL sin tocar código.
+export const MODELO_CHAT_POR_DEFECTO = 'gemini-2.5-flash';
 const VIGENCIA_CATALOGO_MS = 10 * 60 * 1000;
 
 const NOMBRES_RULETA: Record<string, string> = {
@@ -27,23 +29,23 @@ const NOMBRES_RULETA: Record<string, string> = {
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
-  private readonly client: Anthropic | null;
+  private readonly ai: GoogleGenAI | null;
+  readonly modelo: string;
   private catalogo: { texto: string; hasta: number } | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
     config: ConfigService,
   ) {
-    const apiKey = config.get<string>('ANTHROPIC_API_KEY');
+    const apiKey = config.get<string>('GEMINI_API_KEY');
+    this.modelo = config.get<string>('GEMINI_MODEL') || MODELO_CHAT_POR_DEFECTO;
     // Sin clave la API arranca igual; solo el chat responde 503.
-    this.client = apiKey
-      ? new Anthropic({ apiKey, timeout: 45_000, maxRetries: 1 })
-      : null;
+    this.ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
   }
 
   // Lista de recetas por ruleta, para que el asistente recomiende platos que
-  // existen. Se arma ordenada (siempre igual) y se guarda 10 minutos, así el
-  // prompt del sistema no cambia entre pedidos y se aprovecha la caché.
+  // existen. Se arma ordenada (siempre igual) y se guarda 10 minutos, así las
+  // instrucciones no cambian entre pedidos y Gemini puede reutilizarlas.
   private async textoCatalogo(): Promise<string> {
     if (this.catalogo && this.catalogo.hasta > Date.now()) return this.catalogo.texto;
 
@@ -67,7 +69,7 @@ export class ChatService {
   }
 
   async responder(mensajes: MensajeChatDto[]): Promise<string> {
-    if (!this.client) {
+    if (!this.ai) {
       throw new ServiceUnavailableException('El asistente todavía no está configurado');
     }
     if (mensajes[0].rol !== 'user' || mensajes[mensajes.length - 1].rol !== 'user') {
@@ -77,42 +79,35 @@ export class ChatService {
     const catalogo = await this.textoCatalogo();
 
     try {
-      const respuesta = await this.client.beta.messages.create({
-        model: MODELO_CHAT,
-        max_tokens: 2000,
-        // Chat de ayuda: respuestas rápidas y baratas. El esfuerzo se sube solo
-        // si hiciera falta más razonamiento.
-        output_config: { effort: 'low' },
-        // Si el modelo rechaza una pregunta por sus filtros, el servidor la
-        // reintenta con otro modelo dentro del mismo pedido.
-        betas: ['server-side-fallback-2026-07-01'],
-        fallbacks: 'default',
-        system: [
-          { type: 'text', text: GUIA_HUEBITO },
-          { type: 'text', text: catalogo, cache_control: { type: 'ephemeral' } },
-        ],
-        messages: mensajes.map((m) => ({ role: m.rol, content: m.texto })),
+      const respuesta = await this.ai.models.generateContent({
+        model: this.modelo,
+        // Gemini llama "model" al rol del asistente.
+        contents: mensajes.map((m) => ({
+          role: m.rol === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.texto }],
+        })),
+        config: {
+          systemInstruction: `${GUIA_HUEBITO}\n\n${catalogo}`,
+          maxOutputTokens: 2000,
+          temperature: 0.7,
+          // En los modelos Flash el razonamiento extra no hace falta para un chat
+          // de ayuda: apagarlo hace las respuestas más rápidas.
+          ...(this.modelo.includes('flash') ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+        },
       });
 
-      if (respuesta.stop_reason === 'refusal') {
+      const motivo = respuesta.candidates?.[0]?.finishReason;
+      if (motivo === FinishReason.SAFETY || motivo === FinishReason.PROHIBITED_CONTENT || respuesta.promptFeedback?.blockReason) {
         return 'Perdona, con eso no puedo ayudarte. ¿Te ayudo con alguna receta o con cómo usar Huebito?';
       }
-      const texto = respuesta.content
-        .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text')
-        .map((b) => b.text)
-        .join('\n')
-        .trim();
-      return texto || 'No supe qué responder. ¿Puedes contarme un poco más?';
+      return respuesta.text?.trim() || 'No supe qué responder. ¿Puedes contarme un poco más?';
     } catch (error) {
-      if (error instanceof Anthropic.RateLimitError) {
-        throw new HttpException('El asistente está muy ocupado. Intenta en un momento.', HttpStatus.TOO_MANY_REQUESTS);
-      }
-      if (error instanceof Anthropic.AuthenticationError) {
-        this.logger.error('ANTHROPIC_API_KEY inválida');
-        throw new ServiceUnavailableException('El asistente no está disponible');
-      }
-      if (error instanceof Anthropic.APIError) {
-        this.logger.error(`Error de la API de Claude ${error.status}: ${error.message}`);
+      if (error instanceof ApiError) {
+        if (error.status === 429) {
+          // El plan gratuito tiene un límite de pedidos por minuto y por día.
+          throw new HttpException('El asistente está muy ocupado. Intenta en un momento.', HttpStatus.TOO_MANY_REQUESTS);
+        }
+        this.logger.error(`Error de la API de Gemini ${error.status}: ${error.message}`);
         throw new ServiceUnavailableException('El asistente no está disponible en este momento');
       }
       throw error;

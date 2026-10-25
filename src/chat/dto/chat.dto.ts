@@ -20,7 +20,7 @@ export class MensajeChatDto {
   texto: string;
 }
 
-// La conversación completa viaja en cada pedido (la API de Claude no guarda
+// La conversación completa viaja en cada pedido (la API de Gemini no guarda
 // estado). Se limita a los últimos 20 mensajes para acotar costo y abuso.
 export class ChatDto {
   @IsArray()

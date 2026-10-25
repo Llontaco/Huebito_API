@@ -4,7 +4,7 @@ import { ChatService } from './chat.service';
 import { ChatDto } from './dto/chat.dto';
 
 // Asistente de la app. Público (también lo usan los invitados), con un límite
-// de pedidos por IP porque cada respuesta cuesta una llamada a Claude.
+// de pedidos por IP porque cada respuesta es una llamada a Gemini (con límite diario en el plan gratuito).
 @Controller('chat')
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}

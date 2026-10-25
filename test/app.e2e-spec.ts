@@ -314,7 +314,7 @@ describe('API Huebito (integración)', () => {
       await request(srv).post('/chat').send(cuerpo).expect(400);
     });
 
-    it('sin clave de Claude responde 503 en vez de romper', async () => {
+    it('sin clave de Gemini responde 503 en vez de romper', async () => {
       await request(srv).post('/chat').send({ mensajes: [{ rol: 'user', texto: 'hola' }] }).expect(503);
     });
   });
